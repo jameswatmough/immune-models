@@ -1,0 +1,159 @@
+# Immune Model Scripts
+
+
+switch to the code folder and run 'budding_plots.jl' through Julia.  This should produce a cute plot of budding rates versus time since cell infection.
+
+Note the rest of this README is a copy of the quarto file 'staged_treiv_model.qmd'.  Any processing errors are due quarto specific markdown I haven't cleaned up yet.
+
+## The Staged TRIV model
+
+The TEIV model is a classic model of viral dynamics.  The staged TEIV model extends the TEIV framework to include staged progression in the E and I compartments.  This model is in fact a special case of a staged TIV model with $m+n$ I compartments:  the first m compartments are the eclipse stages, where no viral budding (or bursting) occurs; the next n compartments are the budding (or bursting) stages where the budding rate (or bursting probability) ramps up from 0, in the last eclipse stage, to a maximum in the final budding stage.  Note, the budding rate need not be monotone, as budding may slow with time since cell infection.  For ease of comparison with the scalar TEIV model, the model presented here keeps the E compartments explicit.
+
+The TREIV model includes a compartment of *refractory* cells.   There are many variations on the base TREIV model:  [@ciupe2007Role] assumes a flow from I to R in proportion to a population of immune effector cells;  whereas [@ke2022Daily] assumes a flow from T to R in proportion to $IT$.   Here, for simplicity, we assume cells move from $T$ to $R$ in proportion to the viral load.  This glosses over the details of cytokine signalling leading to resistance.
+
+\begin{subequations}
+\begin{align}
+\frac{dT}{dt}    &= -\alpha T V - \phi T V \\
+\frac{dR}{dt}    &= \phi T V - \rho R\\
+\frac{dV}{dt}    &= \sum_{i=m+1}^{m+n} p_i y_i - C V -\alpha T V\\
+\frac{dy_1}{dt}  &= \alpha T V  - k_1 y_1 - d_1 y_1\\
+\frac{dy_i}{dt}  &= k_{i-1} y_i - k_i y_i - d_i y_i \qquad i\in \{2,\dots,m+n\}
+\end{align}
+\end{subequations}
+
+We have, for the main model, $y = (E_1,\dots,E_m,I_1,\dots,I_n)$, $p_i = 0$, $i\in\{1,\dots,m\}, $p_i > 0$, $i\in\{m+1,\dots,m+n\}.
+For ease of notation and generality, we have added progression out of the final compartment, at rate $k_{m+n}$.  Since this is effectively progression to nowhere, $k_{m+n}$ should be zero.
+
+# The staged-TEIV Basic Reproduction Number
+
+Any point with $V=0$ and $y_i=0$, $i\in \{1,\dots,{m+n}\}$  is an equilibrium, which we refer to as an infection-free equilibrium.
+Note that this set of equilibrium solutions is a line in the state space: the $T$-axis.  Every point on this line is an equilibrium.  Following the trend in epidemic modelling, by stability of infection-free solutions we mean stability to perturbations off this line.
+
+The Jacobian Matrix about an infection-free equilibrium with $T = T_0$ can be be partitioned as
+\begin{equation}
+J =
+\begin{pmatrix}
+  0 & \vec{\alpha} T_0 \\
+  0 & N - \Sigma
+\end{pmatrix}
+\end{equation}
+
+Where $\vec{\alpha} = \begin{pmatrix} \alpha & 0 \dots 0 \end{pmatrix}$
+
+\begin{equation}
+N =
+\begin{bmatrix}
+0      & p_0    & \cdots &  p_{n+1} \\
+0      & 0      & \cdots &    0     \\
+\vdots & \vdots &        &   \vdots \\
+0      & 0      & \cdots &    0     
+\end{bmatrix},
+\end{equation}
+and $\Sigma$ is a triangular matrix with nonzero entries on the main diagonal and subdiagonal and zero entries everywhere else.
+
+\begin{equation}
+\Sigma = 
+\begin{bmatrix}
+C+\alpha T_0 & 0 & 0 &   & \cdots & \cdots &  0     \\    
+-\alpha T_0 & k_0+d_0 & 0 & 0 & \cdots & 0 & 0 \\
+0 & - k_0 & k_1 + d_1 & 0 & \cdots & 0 & 0 \\
+0 & 0  & -k_1 & k_2 + d_2 & \cdots & 0 & 0 \\
+\\
+&\vdots & \ddots  & \ddots & \ddots & &   \\
+\\
+&\vdots &  & \ddots & - k_{n-1} & k_n + d_n &  0 \\
+\\
+%0 & 0 & \cdots & k_{n-1} & k_n + d_n & 0 & 0 \\
+&  &   &        & 0 & - k_n & k_{n+1} + d_{n+1}
+\end{bmatrix}
+\end{equation}
+
+
+Following ,[@van_den_driessche2002Reproduction] the basic reproduction number is the spectral radius of $N\Sigma^{-1}$ and is a threshold for stability of each equilibrium.  Note that the zero eigenvalue of $J$ is associated with the line of equilibrium solutions.  Perturbations involving only $T_0$ are neutrally stable.
+
+Note that $N$ is a rank one matrix.  This implies the basic reproduction number is 
+$$\mathcal{R}_0 = 
+\begin{pmatrix} 0 & p_0 & \dots & p_n \end{pmatrix}
+\Sigma^{-1} \begin{pmatrix} 1 \\ 0 \\ \vdots \\ 0 \end{pmatrix}
+$$
+
+Inverting $\Sigma$, we find the following entries in the first column:
+$$\begin{pmatrix} 
+  \dfrac{1}{C+\alpha T_0} & 
+  \dfrac{\alpha T_0}{(C+\alpha T_0)(d_0+k_0)} & 
+  \dfrac{\alpha T_0 k_0}{(C+\alpha T_0)(d_0+k_0)(d_1+k_1)} & 
+  \dots & 
+  \dfrac{\alpha T_0}{(C+\alpha T_0)}\left(\prod_{i=0}^{n}\frac{k_i}{d_i+k_i}\right)\dfrac{1}{d_{n+1}+k_{n+1}}
+\end{pmatrix}$$
+
+Thus
+\begin{equation}
+\mathcal{R}_0 = 
+  \dfrac{\alpha T_0}{C+\alpha T_0} \left(
+      \dfrac{p_0}{d_0+k_0} 
+       + \sum_{i=1}^{n+1} \dfrac{p_{i}}{d_{i}+k_{i}} \prod_{j=0}^{i-1}\frac{k_j}{d_j+k_j}\right).
+\end{equation}
+The ratio $\frac{p_i}{d_{i}+k_{i}}$ is the expected amount of virus produced by cell in the $i^{\text{th}}$ stage of infection, and the product inside the summation is the fraction of cells that survive from initial infection to the $i^{\text{th}}$ stage of infection.
+
+An interesting special case is when $p_0=0$, $d_i=D$, and $k_i=(n+1)k$, $i\in\{0,\dots,n\}$, $k_{n+1}=0$ so that the first stage is a true eclipse stage and the rates in the intermediate stages are identical.
+Note that here we've rescaled $k$ by $(n+1)$ so that $1/k$ is the expected sojourn time of a cell in stages 0 through $n$.
+Thus we interpret the first $n+1$ stages as part of the eclipse stage in the single stage TEIV model with a mean eclipse duration of $1/k$.
+\begin{equation}
+\mathcal{R}_0 = 
+  \dfrac{\alpha T_0}{C+\alpha T_0} \left(
+       \sum_{i=1}^{n}  \left(\frac{(n+1)k}{D+(n+1)k}\right)^{i}\dfrac{p_{i}}{D+(n+1)k} +  \left(\frac{(n+1)k}{D+(n+1)k}\right)^{n+1}\dfrac{p_{n+1}}{D} \right).
+\end{equation}
+
+For the special case considered in the main manuscript,
+we also have $p_i = BP(i)$, and $p_{n+1} = B$, and $k_{n+1}=0$.
+Thus,
+\begin{equation}\label{eqn:R0general}
+\mathcal{R}_0 = 
+  \dfrac{B\alpha T_0}{C+\alpha T_0} 
+       \left(\sum_{i=1}^{n}  \left(\frac{(n+1)k}{D+(n+1)k}\right)^{i}\dfrac{P(i)}{D+(n+1)k} +  \left(\frac{(n+1)k}{D+(n+1)k}\right)^{n+1}\dfrac{1}{D} \right).
+\end{equation}
+
+For the special case of arithmetic ramp up considered in the main manuscript,
+we have
+$p_i = \frac{Bi}{n+1}$, 
+$d_i=D$, $k_{i} = (n+1)k$, $i\in\{0,\dots,n\}$, $d_{n+1}=D$, $p_{n+1} = B$, and $k_{n+1}=0$.
+\begin{equation}
+\mathcal{R}_0 = 
+  \dfrac{B\alpha T_0}{C+\alpha T_0} \left(\sum_{i=1}^{n} \left(\frac{(n+1)k}{D+(n+1)k}\right)^{i}\dfrac{i}{(n+1)(D+(n+1)k)} + \left(\frac{(n+1)k}{D+(n+1)k}\right)^{n+1}\dfrac{1}{D} \right),
+\end{equation}
+and for the case of no cell death during the budding and eclipse stages we have $d_{i} = 0$, $i\in\{0,\dots,n\}$ and $d_{n+1} = D$ leading to
+\begin{equation}
+\mathcal{R}_0 = 
+  \dfrac{B\alpha T_0}{C+\alpha T_0} \left(\dfrac{n}{2(n+1)k} + \dfrac{1}{D} \right),
+\end{equation}
+
+Yet another special case of interest is a geometric ramp up from a production rate of $B_0$ to $B$ over the $n+1$ stages:
+$P(i) = B_0(B/B_0)^{i/(n+1)}$.
+Combining this with the earlier simplifications on $k_i$ and $d_i$ leads to
+\begin{equation}
+\mathcal{R}_0 = 
+  \dfrac{\alpha T_0}{C+\alpha T_0} 
+       \left(\sum_{i=0}^{n}  \left(\frac{(n+1)k}{D+(n+1)k}\right)^{i}\left(\frac{B}{B_0}\right)^{i/(n+1)}\dfrac{B_0}{D+(n+1)k} +  \left(\frac{(n+1)k}{D+(n+1)k}\right)^{n+1}\dfrac{B}{D} \right).
+\end{equation}
+Note that the summation begins with the zero term, since $p_0 = B_0 > 0$.
+\begin{align}
+\mathcal{R}_0 &= 
+  \dfrac{\alpha T_0}{C+\alpha T_0} 
+       \left(
+         \frac{1 - \left(\frac{(n+1)k}{D+(n+1)k}\right)^{n+1}\frac{B}{B_0}}{1 - \frac{(n+1)k}{D+(n+1)k}\left(\frac{B}{B_0}\right)^{1/(n+1)}} \dfrac{B_0}{D+(n+1)k} 
+         +  \left(\frac{(n+1)k}{D+(n+1)k}\right)^{n+1}\dfrac{B}{D} 
+       \right) \\
+  &= \dfrac{\alpha T_0}{C+\alpha T_0} 
+       \left(\frac{B_0 - B\left(\frac{(n+1)k}{D+(n+1)k}\right)^{n+1}}{D + (n+1)k\left(1-\sqrt[n+1]{\frac{B}{B_0}}\right)}  +  \left(\frac{(n+1)k}{D+(n+1)k}\right)^{n+1}\dfrac{B}{D} \right) \\
+  &= \dfrac{\alpha T_0}{C+\alpha T_0} 
+       \left(\frac{DB_0 + B(n+1)k\left(1-\sqrt[n+1]{\frac{B}{B_0}}\right)\left(\frac{(n+1)k}{D+(n+1)k}\right)^{n+1}}{\left(D + (n+1)k\left(1-\sqrt[n+1]{\frac{B}{B_0}}\right)\right)D}\right).
+%       \\
+%  &= \dfrac{\alpha T_0}{C+\alpha T_0}
+%       \dfrac{B}{D}\left(\frac{(n+1)k}{D+(n+1)k}\right)^{n+1}
+%       \left(\frac{\frac{DB_0}{B}\left(\frac{(n+1)k}{D+(n+1)k}\right)^{-(n+1)} + (n+1)k\left(1-\sqrt[n+1]{\frac{B}{B_0}}\right)}{D + (n+1)k\left(1-\sqrt[n+1]{\frac{B}{B_0}}\right)}\right).
+\end{align}
+
+We conjecture that the last factor increases monotonically from  $\frac{B}{D}\left(\frac{(n+1)k}{D+(n+1)k}\right)^{n+1}$  to $\frac{B}{D}$ 
+as $B_0$ increases from 0 to $B$.
+
+# Budding Rates as function of time since cell infection

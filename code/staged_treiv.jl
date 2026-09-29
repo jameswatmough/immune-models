@@ -42,10 +42,15 @@ end
 abstract type RampType end
 struct GeomRamp <: RampType end
 struct AlgRamp  <: RampType end
+struct LinearRamp  <: RampType end
 
 """ rampfun(::Type{AlgRamp}) 
     return budding rates for arithmetic ramp up with m+n stages with m zeros"""
-    rampfun(::Type{AlgRamp};m=1,n=7) = [[0. for i in 1:m]; [i/n for i in 1:n]]
+    rampfun(::Type{AlgRamp};m=1,n=7) = [[0. for i in 0:m]; [i/n for i in 1:n]]
+
+""" rampfun(::Type{LinearRamp}) 
+    return budding rates for linear ramp up from start to 1 """
+    rampfun(::Type{LinearRamp};start=-0.5,stages=15) = [max(0.0,start*(1-i/(stages-1)) + i/(stages-1)) for i in 0:(stages-1)]
 
 """ rampfun(::Type{GeomRamp};m=1; n=7,rampfactor=0.1) 
     return budding rates for geometric ramp up with m+n stages with m zeros

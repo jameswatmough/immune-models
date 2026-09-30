@@ -5,23 +5,17 @@
 # n stages with budding ramp up
 # resistant (R) compartment
 # should possibly include interferon, but keep resistance simple for first go
-
+#
+# Note there is a potential for confusion of the number of stages since a given model has eclipse stages, ramp-up stages, and infectious stages
+# The convention taken here is that 
+#     there are n + m + 1 stages
+#     m refers to number of eclipse stages (zero budding)
+#     n refers to number of ramp-up stages
+#     there is one additional 'fully-productive' infected stage
+# The classic TIV model has m=n=0      ( the single stage model)
+# The classic TEIV model has m=1, n=0  ( a two stage model)
 
 using DifferentialEquations, ComponentArrays, Parameters
-
-# Model parameters used in papers
-
-struct baseparam        # symbol in various manuscripts
-  infection_rate        # alpha
-  eclipse_duration      # 1/E
-  num_eclipse_stages
-  num_budding_stages
-  base_cell_death_rate  # D
-  maximal_budding_rate  # B
-  ramp_up               # P(i), p_I (vector of length m+n+1)
-  viral_clearance_rate  # C
-  viable_fraction       # epsilon
-end
 
 # Model parameters used in general ode 
 
@@ -38,24 +32,31 @@ end
 end
 
 # ramp up functions
+#
+# for consistency the ramp functions should return vectors of length m+n+1
 
 abstract type RampType end
 struct GeomRamp <: RampType end
-struct AlgRamp  <: RampType end
+struct ArithRamp  <: RampType end
 struct LinearRamp  <: RampType end
 
-""" rampfun(::Type{AlgRamp}) 
-    return budding rates for arithmetic ramp up with m+n stages with m zeros"""
-    rampfun(::Type{AlgRamp};m=1,n=7) = [[0. for i in 0:m]; [i/n for i in 1:n]]
+""" rampfun(::Type{ArithRamp}) 
+    return budding rates for arithmetic ramp up with m+n stages with m zeros
+    returns a vector of length m+n+1"""
+    rampfun(::Type{ArithRamp};m=1,n=7) = [[0. for i in 1:m]; [i/(n+1) for i in 1:(n+1)]]
 
 """ rampfun(::Type{LinearRamp}) 
-    return budding rates for linear ramp up from start to 1 """
-    rampfun(::Type{LinearRamp};start=-0.5,stages=15) = [max(0.0,start*(1-i/(stages-1)) + i/(stages-1)) for i in 0:(stages-1)]
+    return budding rates for linear ramp up from start to 1
+    returns a vector of length n+1"""
+    rampfun(::Type{LinearRamp};start=-0.5,n=15) = 
+        n==0 ?
+          [1.0] :
+          [max(0.0,1.0 + (start-1.0)*i/n) for i in n:-1:0]
 
 """ rampfun(::Type{GeomRamp};m=1; n=7,rampfactor=0.1) 
     return budding rates for geometric ramp up with m+n stages with m zeros
-    and n entries starting from rampfactor and ending at one """
-    rampfun(::Type{GeomRamp};m=1,n=7,rampfactor=0.1) = [[0. for i in 1:m]; [rampfactor^(1-i/(n-1)) for i in 0:n-1]]
+    and n+1 entries starting from rampfactor and ending at one """
+    rampfun(::Type{GeomRamp};m=1,n=7,rampfactor=0.1) = [[0. for i in 1:m]; [rampfactor^(1-i/n) for i in 0:n]]
 
 # constructors for parameter sets
 

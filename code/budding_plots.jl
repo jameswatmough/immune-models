@@ -1,76 +1,82 @@
+# produces two plots 'plot_arith' and 'plot_linear'
+# for runs with arithmetic and linear ramp up
+
+
 include("staged_treiv.jl")
-# sample parameter sets
-#
+
 using Plots
 
-function param_test(
-    ;infection_rate = 4.9e-5
+# parameter sets
+#
+
+function param_budding(
+    ;infection_rate = 0.0
     ,resistance_rate = 4.9e-5
     ,viral_clearance_rate = 23.61
-    ,time_to_full_budding = 5
-    ,budding_death_rate = 0.35
-    ,eclipse_death_rate = 0.
-    ,num_eclipse_stages = 3
-    ,num_budding_stages = 3
+    ,eclipse_duration = 5
+    ,max_death_rate = 0.35
     ,max_budding_rate = 1000
-    ,ramp_fun = n->[i/n for i in 1:n]
+    ,ramp = rampfun(ArithRamp,m=2,n=3)
   )
-  progression_rate = (num_eclipse_stages+num_budding_stages)/time_to_full_budding
+  stages = length(ramp)
+  prog_rate = [stages/eclipse_duration for i in 1:stages]
+  death_rate = max_death_rate*ramp
+  budding_rate = max_budding_rate*ramp
   Param(
     infection_rate,
     resistance_rate,
-    [progression_rate for i in 1:num_eclipse_stages],
-    [eclipse_death_rate for i in 1:num_eclipse_stages], 
-    [budding_death_rate for i in 1:num_budding_stages], 
-    [progression_rate for i in 1:num_budding_stages-1],
-    max_budding_rate*ramp_fun(num_budding_stages),
+    prog_rate,
+    death_rate,
+    budding_rate,
     viral_clearance_rate,
   )
 end
 
-
 # Ensemble Runs
 
-## Algebraic Ramp up compared with TIV model
+## Arithmetic Ramp up compared with TIV model
 
 ### set up base ode problem
 
-stages = 16
-p = param_baseline(infection_rate = 0.0,ramp = rampfun(AlgRamp,m=0,n=stages))
-initial_conditions = ComponentArray(  T = 1000.,  R = 0.,  I = [[1.]; [0 for i in 2:length(p.death_rate)]],  V = 0.)
+stages = 16 
+p = param_budding(ramp = rampfun(ArithRamp,m=0,n=stages-1))
+initial_conditions = ComponentArray(T = 1000.,  R = 0.,  I = [[1.]; [0 for i in 2:length(p.death_rate)]],  V = 0.)
 prob = ODEProblem(staged_treiv_ode!,initial_conditions,[0,20],p)
 
-plot_alg = plot( title="Budding Rate with algebraic ramp", xlabel="Time since cell infection", ylabel="Expected Budding Rate")
+plot_arith = plot( title="Budding Rate with arithmetic ramp", xlabel="Time since cell infection", ylabel="Expected Budding Rate")
 
 ### loop through ramp-up functions
 
-for i in 0:3:stages  
-  global prob = remake(prob, p = param_baseline(infection_rate = 0.0, ramp = rampfun(AlgRamp,m=i,n=stages-i)) )
+for m in 0:3:(stages-1)
+  n = stages-1-m
+  global prob = remake(prob, p = param_budding(ramp = rampfun(ArithRamp,m=m,n=n)))
   sol = solve(prob)
   t = sol.t
   I = [sol[t].I[i] for t in 1:length(sol),  i in 1:length(sol[1].I) ]
-  plot!(plot_alg, t, I*prob.p.budding_rate, label=string("E=",i,"; A=",15-i) )
+  plot!(plot_arith, t, I*prob.p.budding_rate, label=string("E=",m,"; A=",n) )
 end
 
 ## remake the ode problem for the simple single stage TIV model
 
-p_TIV = param_baseline(infection_rate = 0.0, ramp = rampfun(AlgRamp,m=0,n=1)) 
-u0_TIV = ComponentArray(  T = 1000.,  R = 0.,  I = [1.],  V = 0.)
-prob = remake(prob,u0 = u0_TIV, p = p_TIV)
-sol = solve(prob)
-t = sol.t
-I = [sol[t].I[i] for t in 1:length(sol),  i in 1:length(sol[1].I) ]
+let p,u0,sol,I
+  p = param_budding(ramp = rampfun(LinearRamp,start=1.0,n=0)) 
+  u0 = ComponentArray(  T = 1000.,  R = 0.,  I = [1.],  V = 0.)
+  TIVprob = remake(prob,u0 = u0, p = p)
+  sol = solve(TIVprob)
+  I = [sol[t].I[i] for t in 1:length(sol),  i in 1:length(sol[1].I) ]
 
-plot!(plot_alg, t, I*prob.p.budding_rate, label=string("E=0; A=0") )
+  plot!(plot_arith, sol.t, I*TIVprob.p.budding_rate, label=string("E=0; A=0") )
+end
               
-plot_alg
+plot_arith
 
 ## Linear Ramp up 
 
 ### set up base ode problem
 
+
 stages = 16
-p = param_baseline(infection_rate = 0.0,ramp = rampfun(LinearRamp,start=0,stages=stages))
+p = param_budding(ramp = rampfun(LinearRamp,start=0,n=stages-1))
 initial_conditions = ComponentArray(  T = 1000.,  R = 0.,  I = [[1.]; [0 for i in 2:length(p.death_rate)]],  V = 0.)
 prob = ODEProblem(staged_treiv_ode!,initial_conditions,[0,20],p)
 
@@ -78,12 +84,12 @@ plot_linear = plot( title="Budding Rate with Linear Ramp", xlabel="Time since ce
 
 ### loop through ramp-up functions
 
-for i in 0:.2:1  
-  global prob = remake(prob, p = param_baseline(infection_rate = 0.0, ramp = rampfun(LinearRamp,start=i,stages=stages)) )
+for start in 0:.2:1  
+  global prob = remake(prob, p = param_budding(ramp = rampfun(LinearRamp,start=start,n=stages-1)) )
   sol = solve(prob)
   t = sol.t
   I = [sol[t].I[i] for t in 1:length(sol),  i in 1:length(sol[1].I) ]
-  plot!(plot_linear, t, I*prob.p.budding_rate, label=string("ramp start =",i) )
+  plot!(plot_linear, t, I*prob.p.budding_rate, label=string("ramp start =",start) )
 end
 
 plot_linear

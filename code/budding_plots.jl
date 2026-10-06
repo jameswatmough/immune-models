@@ -38,11 +38,7 @@ end
 
 stages = 16 
 p = param_budding(ramp = rampfun(ArithRamp,m=0,n=stages-1))
-initial_conditions = ComponentArray(
-  T = 1000.,
-  I = [[1.]; [0 for i in 2:length(p.death_rate)]],
-  V = 0.
-)
+initial_conditions = ComponentArray(T = 1000.,  R = 0.,  V = 0.,  I = [[1.]; [0 for i in 2:length(p.death_rate)]])
 prob = ODEProblem(staged_treiv_ode!,initial_conditions,[0,20],p)
 
 plot_arith = plot( title="Budding Rate with arithmetic ramp", xlabel="Time since cell infection", ylabel="Expected Budding Rate")
@@ -79,11 +75,7 @@ plot_arith
 
 stages = 16
 p = param_budding(ramp = rampfun(LinearRamp,start=0,n=stages-1))
-initial_conditions = ComponentArray(
-  T = 1000.,
-  I = [[1.]; [0 for i in 2:length(p.death_rate)]],
-  V = 0.
- )
+initial_conditions = ComponentArray(  T = 1000.,  R = 0.,  V = 0.,  I = [[1.]; [0 for i in 2:length(p.death_rate)]])
 prob = ODEProblem(staged_treiv_ode!,initial_conditions,[0,20],p)
 
 plot_linear = plot( title="Budding Rate with Linear Ramp", xlabel="Time since cell infection", ylabel="Expected Budding Rate")

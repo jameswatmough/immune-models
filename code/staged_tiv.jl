@@ -106,16 +106,6 @@ ic_baseline = function(p)
   return(initial_conditions)
 end
 
-# sample parameter sets
-p = param_baseline(
-      ramp = rampfun(GeomRamp,m=7,n=8,rampfactor=.2)
-    )
-        
-initial_conditions = ComponentArray(
-  T = 1000.,
-  V = 100.,
-  I = [0 for i in 1:length(p.budding_rate)]
-)
 
 function staged_tiv_ode!(dx,x,p,t)
 

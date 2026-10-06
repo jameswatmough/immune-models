@@ -1,10 +1,8 @@
-# Staged TREIV model
-# really a staged-TRIV model with 
+# Staged TEIV model
+# really a staged-TIV model with 
 # m+n+1 stages
 # where m stages have zero budding (true eclipse) 
 # n stages with budding ramp up
-# resistant (R) compartment
-# should possibly include interferon, but keep resistance simple for first go
 #
 # Note there is a potential for confusion of the number of stages since a given model has eclipse stages, ramp-up stages, and infectious stages
 # The convention taken here is that 
@@ -17,15 +15,31 @@
 
 using DifferentialEquations, ComponentArrays, Parameters
 
+# Axes constructors for the state and event component arrays
+
+function get_state_axis(stages)
+  return Axis(T=1,V=2,I=3:stages+2) 
+end
+
+function get_event_axis(stages)
+  return Axis(incidence = 1,
+              virus_decay = 2,
+              budding = 3,
+              progression = 4:2+stages,
+              cell_death = 3+stages:2+2*stages
+             )
+end
+
 # Model parameters used in general ode 
 
 @with_kw struct Param
   infection_rate::Float64           = 0.000049
-  resistance_rate::Float64          = 0.000049
   progression_rate::Vector{Float64} = [5/5,5/5,5/5,5/5,5/5] # m+n=5
   death_rate::Vector{Float64}       = [0,0,0,.35,.35,.35]   # m+n+1=6
   budding_rate::Vector{Float64}     = [0,0,0,.1,.2,.3]
   viral_clearance_rate::Float64     = 23.61
+  state_axis                        = get_state_axis(6)
+  event_axis                        = get_event_axis(6) 
 #  @assert length(budding_death_rate) == length(budding_rate)
 #  @assert length(budding_progression_rate) == length(budding_rate)
 #  @assert length(eclipse_progression_rate) == length(eclipse_death_rate)
@@ -62,7 +76,6 @@ struct LinearRamp  <: RampType end
 
 function param_baseline(
     ;infection_rate = 4.9e-5
-    ,resistance_rate = 4.9e-5
     ,viral_clearance_rate = 23.61
     ,eclipse_duration = 5
     ,max_death_rate = 0.35
@@ -73,14 +86,24 @@ function param_baseline(
   prog_rate = [stages/eclipse_duration for i in 1:stages-1]
   death_rate = max_death_rate*ramp
   budding_rate = max_budding_rate*ramp
+  state_axis = get_state_axis(stages)
+  event_axis = get_event_axis(stages)
   Param(
     infection_rate,
-    resistance_rate,
     prog_rate,
     death_rate,
     budding_rate,
     viral_clearance_rate,
+    state_axis,
+    event_axis
   )
+end
+
+ic_baseline = function(p)
+  initial_conditions = ComponentVector(zeros(lastindex(p.state_axis)),p.state_axis)
+  initial_conditions.T = 1000.
+  initial_conditions.V = 100.
+  return(initial_conditions)
 end
 
 # sample parameter sets
@@ -90,14 +113,16 @@ p = param_baseline(
         
 initial_conditions = ComponentArray(
   T = 1000.,
-  R = 0.,
   V = 100.,
   I = [0 for i in 1:length(p.budding_rate)]
 )
 
-function staged_treiv_ode!(dx,x,p,t)
+function staged_tiv_ode!(dx,x,p,t)
 
-  @unpack T, R, V, I = x
+  # get rid of any negative entries
+  @. x = max(x,0.)  
+
+  @unpack T, V, I = x
 
   incidence = p.infection_rate.*T.*V
   budding = sum(p.budding_rate.*I)
@@ -107,8 +132,7 @@ function staged_treiv_ode!(dx,x,p,t)
   dx.I[2:end] .+= p.progression_rate.*I[1:end-1] 
   
 
-  dx.R = p.resistance_rate*sum(I)*T
-  dx.T = -incidence - p.resistance_rate*sum(I)*T
+  dx.T = -incidence
   dx.I[1] += incidence
 
   dx.V = budding .- p.viral_clearance_rate.*V .- incidence
@@ -117,21 +141,46 @@ function staged_treiv_ode!(dx,x,p,t)
 
 end
 
-import SparseArrays
-function Gpattern(p,u)
+# SDE model
 
-  G = zeros(length(u),length(p.budding_rate))
-  # infection
-  G[1,1]=1
-  G[2,1]=1
+import Random, SparseArrays
+
+# use a ComponentVector for constructing the covariance matrix
+# rows of G correspond to the state variables 
+# columns of G correspond to events
+
+function Gpattern(p)
+  # construct sparse array pattern for G, the root of the covariance matrix 
+
+  # construct ComponentArray and sent all entries to zero
+  G = ComponentMatrix( zeros(lastindex(p.state_axis),lastindex(p.event_axis)), (p.state_axis, p.event_axis))
+
+  # set entries corresponding to transitions to 1
+  stages = length(p.death_rate) # for steping along diagonals of G
+  G[:T,:incidence]=1
+  G[:V,:incidence]=1
+  @view(G[:I,:incidence])[1]=1
+  G[:V,:virus_decay] = 1
+  @view(G[:I,:budding])[1] = 1
+  @view(G[:I,:progression])[1:(stages+1):end] .= 1  # diagonals
+  @view(G[:I,:progression])[2:(stages+1):end] .= 1  # subdiagonals
+  @view(G[:I,:cell_death])[1:(stages+1):end] .= 1   # diagonals
+
+  G = SparseArrays.sparse(G)
 
 end
 
-function staged_treiv_noise!(dx,x,p,t)
+function staged_tiv_noise!(dx_raw,x,p,t)
 
-  @unpack T, R, V, I = x
+
+  # get rid of any negative entries
+  @. x = max(x,0.)  
+
+  @unpack T, V, I = x
+
+  # embellish dx with row and column names
+  dx = ComponentMatrix(dx_raw, (p.state_axis,p.event_axis))
   
-  # order the state transition events as follows
   # target cell infection: T-=1 ; V-=1; I[1] +=1
   # target cell resistence: T-=1 ; R+=1
   # virion degradation: V-=1
@@ -140,43 +189,27 @@ function staged_treiv_noise!(dx,x,p,t)
   # infected cell death: I[i]-=1 for i in 1:(m+n+1)
   # p.budding_rate has length m+n+1; the total number of infected stages
   #
-
-  # set up the columns for each process
-
-  stages = length(I)    # m + n + 1
-  incidence = 1
-  resistence = 2
-  degradation = 3
-  budding = 4
-  progression = 5:stages+3  # 4+1 to 4+m+n
-  cell_death = stages+4:2*stages+3  # 4+m+n+1 to 4+m+n + m + n + 1
+  # dx is a ComponentArray with columns indexed by events
 
   σ_incidence = sqrt(p.infection_rate.*T.*V)
-  dx[:T,incidence] = -σ_incidence
-  dx[:V,incidence] = -σ_incidence 
-  @view(dx[:I,incidence])[1] = σ_incidence 
+  dx[:T,:incidence] = -σ_incidence
+  dx[:V,:incidence] = -σ_incidence 
+  @view(dx[:I,:incidence])[1] = σ_incidence 
 
-  σ_resistance = sqrt(p.resistance_rate*sum(I)*T)
-  dx[:T,resistance] = -σ_resistance 
-  dx[:R,resistance] = +σ_resistance
-
-  dx[:V,budding] = sqrt(sum(p.budding_rate.*I))
-  dx[:V,degradation] = -sqrt(sum(p.viral_clearance_rate.*I))
+  dx[:V,:budding] = sqrt(sum(p.budding_rate.*I))
+  dx[:V,:virus_decay] = -sqrt(sum(p.viral_clearance_rate.*I))
 
   # there are m+n different independent processes for progress
-  np = length(p.progression_rate)
   stages = length(I)
-  dIprog = @view(dx[:I,progression])
+  dIprog = @view(dx[:I,:progression])
   σ_prog = sqrt.(p.progression_rate.*I[1:end-1] )
   dIprog[1:(stages+1):end] .= -σ_prog
   dIprog[2:(stages+1):end] .= σ_prog
 
   # there are m+n+1 different independent processes for progress
-  np = length(p.budding_rate)
-  dIdeath = @view(dx[:I,cell_death])
+  dIdeath = @view(dx[:I,:cell_death])
   dIdeath[1:stages+1:end] = -sqrt.(p.death_rate.*I)
   
-
   return(dx)
 
 end

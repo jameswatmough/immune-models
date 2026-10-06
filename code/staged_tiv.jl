@@ -1,10 +1,8 @@
-# Staged TREIV model
-# really a staged-TRIV model with 
+# Staged TEIV model
+# really a staged-TIV model with 
 # m+n+1 stages
 # where m stages have zero budding (true eclipse) 
 # n stages with budding ramp up
-# resistant (R) compartment
-# should possibly include interferon, but keep resistance simple for first go
 #
 # Note there is a potential for confusion of the number of stages since a given model has eclipse stages, ramp-up stages, and infectious stages
 # The convention taken here is that 
@@ -21,7 +19,6 @@ using DifferentialEquations, ComponentArrays, Parameters
 
 @with_kw struct Param
   infection_rate::Float64           = 0.000049
-  resistance_rate::Float64          = 0.000049
   progression_rate::Vector{Float64} = [5/5,5/5,5/5,5/5,5/5] # m+n=5
   death_rate::Vector{Float64}       = [0,0,0,.35,.35,.35]
   budding_rate::Vector{Float64}     = [0,0,0,.1,.2,.3]
@@ -62,7 +59,6 @@ struct LinearRamp  <: RampType end
 
 function param_baseline(
     ;infection_rate = 4.9e-5
-    ,resistance_rate = 4.9e-5
     ,viral_clearance_rate = 23.61
     ,eclipse_duration = 5
     ,max_death_rate = 0.35
@@ -75,7 +71,6 @@ function param_baseline(
   budding_rate = max_budding_rate*ramp
   Param(
     infection_rate,
-    resistance_rate,
     prog_rate,
     death_rate,
     budding_rate,
@@ -90,14 +85,13 @@ p = param_baseline(
         
 initial_conditions = ComponentArray(
   T = 1000.,
-  R = 0.,
   I = [0 for i in 1:length(p.budding_rate)],
   V = 100.
 )
 
 function staged_treiv_ode!(dx,x,p,t)
 
-  @unpack T, R, I, V = x
+  @unpack T, I, V = x
 
   incidence = p.infection_rate.*T.*V
   budding = sum(p.budding_rate.*I)
@@ -107,8 +101,7 @@ function staged_treiv_ode!(dx,x,p,t)
   dx.I[2:end] .+= p.progression_rate[1:end-1].*I[1:end-1] 
   
 
-  dx.R = p.resistance_rate*sum(I)*T
-  dx.T = -incidence - p.resistance_rate*sum(I)*T
+  dx.T = -incidence
   dx.I[1] += incidence
 
   dx.V = budding .- p.viral_clearance_rate.*V .- incidence

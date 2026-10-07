@@ -17,10 +17,20 @@ using DifferentialEquations, ComponentArrays, Parameters
 
 # Axes constructors for the state and event component arrays
 
+"""
+  get_state_axis(stages)
+
+Return an Axis for state variables
+"""
 function get_state_axis(stages)
   return Axis(T=1,V=2,I=3:stages+2) 
 end
 
+"""
+  get_event_axis(stages)
+
+Return an Axis for transition events
+"""
 function get_event_axis(stages)
   return Axis(incidence = 1,
               virus_decay = 2,
@@ -54,26 +64,47 @@ struct GeomRamp <: RampType end
 struct ArithRamp  <: RampType end
 struct LinearRamp  <: RampType end
 
-""" rampfun(::Type{ArithRamp}) 
-    return budding rates for arithmetic ramp up with m+n stages with m zeros
-    returns a vector of length m+n+1"""
-    rampfun(::Type{ArithRamp};m=1,n=7) = [[0. for i in 1:m]; [i/(n+1) for i in 1:(n+1)]]
+"""
+  rampfun(ArithRamp[, m, n]) 
 
-""" rampfun(::Type{LinearRamp}) 
-    return budding rates for linear ramp up from start to 1
-    returns a vector of length n+1"""
-    rampfun(::Type{LinearRamp};start=-0.5,n=15) = 
-        n==0 ?
-          [1.0] :
-          [max(0.0,1.0 + (start-1.0)*i/n) for i in n:-1:0]
+  return budding rates for arithmetic ramp up with m+n stages with m zeros
+  returns a vector of length m+n+1
+"""
+rampfun(::Type{ArithRamp};m=1,n=7) = [[0. for i in 1:m]; [i/(n+1) for i in 1:(n+1)]]
 
-""" rampfun(::Type{GeomRamp};m=1; n=7,rampfactor=0.1) 
-    return budding rates for geometric ramp up with m+n stages with m zeros
-    and n+1 entries starting from rampfactor and ending at one """
-    rampfun(::Type{GeomRamp};m=1,n=7,rampfactor=0.1) = [[0. for i in 1:m]; [rampfactor^(1-i/n) for i in 0:n]]
+"""
+  rampfun(LinearRamp[, start, n]) 
+
+  return budding rates for linear ramp up from start to 1
+  returns a vector of length n+1
+
+  This is intended as a bridge between a TEIV model with an eclipse stage
+  and the TIV model with no eclipse stages.
+  Budding starts immediately after infection, but peaks some time after infection.
+"""
+rampfun(::Type{LinearRamp};start=-0.5,n=15) = 
+  n==0 ?
+    [1.0] :
+    [max(0.0,1.0 + (start-1.0)*i/n) for i in n:-1:0]
+
+"""
+  rampfun(GeomRamp[, m, n, rampfactor) 
+
+  return budding rates for geometric ramp up with m+n stages with m zeros
+  and n+1 entries starting from rampfactor and ending at one
+
+  This limits to a discrete delay as rampfactor -> 0
+"""
+rampfun(::Type{GeomRamp};m=1,n=7,rampfactor=0.1) = [[0. for i in 1:m]; [rampfactor^(1-i/n) for i in 0:n]]
 
 # constructors for parameter sets
 
+"""
+  param_baseline([infection_rate, viral_clearance_rate, eclipse_duration, max_death_rate, max_budding_rate, ramp])
+
+  returns a default set of parameter values
+
+"""
 function param_baseline(
     ;infection_rate = 4.9e-5
     ,viral_clearance_rate = 23.61
@@ -99,6 +130,18 @@ function param_baseline(
   )
 end
 
+"""
+  ic_baseline(p)
+
+  returns a default set of initial conditions consistent with parameter values in p
+
+  I.e., a ComponentVector based on p.state_axis
+
+  # Arguments
+  
+  - `p` structure of parameters (Param)
+
+"""
 ic_baseline = function(p)
   initial_conditions = ComponentVector(zeros(lastindex(p.state_axis)),p.state_axis)
   initial_conditions.T = 1000.
@@ -106,7 +149,20 @@ ic_baseline = function(p)
   return(initial_conditions)
 end
 
+"""
+  staged_tiv_ode!(dx,x,p,t)
 
+  returns the vector field for the staged tiv model
+
+  for use in constructing ODEProblems or SDEProblems
+
+  # Arguments
+  
+  `dx`  the vector field (a.k.a 'drift' in the SDE model
+  `x` state vector; a ComponentVector with axis p.state_axis
+  `p` a Parameter structure (Param)
+  `t` time
+"""
 function staged_tiv_ode!(dx,x,p,t)
 
   # get rid of any negative entries
@@ -139,6 +195,16 @@ import Random, SparseArrays
 # rows of G correspond to the state variables 
 # columns of G correspond to events
 
+
+"""
+  Gpattern(p)
+
+  returns the sparseArray pattern for the state transition matrix passed to SDEProblem
+
+  # Argument
+  
+  `p` a Parameter structure (Param)
+"""
 function Gpattern(p)
   # construct sparse array pattern for G, the root of the covariance matrix 
 
@@ -160,6 +226,21 @@ function Gpattern(p)
 
 end
 
+
+"""
+  staged_tiv_noise!(dx,x,p,t)
+
+  returns the root of the CoVariance Matrix the staged tiv model
+
+  for use in constructing the SDEProblem
+
+  # Arguments
+  
+  `dx`  the vector field (a.k.a 'drift' in the SDE model
+  `x` state vector; a ComponentVector with axis p.state_axis
+  `p` a Parameter structure (Param)
+  `t` time
+"""
 function staged_tiv_noise!(dx_raw,x,p,t)
 
 

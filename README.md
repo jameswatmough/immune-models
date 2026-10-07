@@ -45,4 +45,4 @@ where $f$ is the vector field of the ODE model and $G$ is the square root of a c
 |progression      | $I_i -= 1$; $I_{i+1} += 1$ | $k_i I_i$ | $i\in\{1,\dots,n+m\}$ |
 |cell death       | $I_i -=1$                  | $d_i I_i$ | $i\in\{1,\dots,n+m+1\}$   |
 
-Each column of $G$ corresponds to a state variable, and each row of $G$ corresponds to a transition event.  If we let $\zeta$ denote the matrix whose columns denote the transitions by $\pm 1$, then $G = \zeta \text{diag}(\sqrt{f}}$ so that $GG^T$ is the (square) covariance matrix.
+Each column of $G$ corresponds to a state variable, and each row of $G$ corresponds to a transition event.  If we let $\zeta$ denote the matrix whose columns denote the transitions by $\pm 1$, then $G = \zeta \text{diag}(\sqrt{f})$ so that $GG^T$ is the (square) covariance matrix.
